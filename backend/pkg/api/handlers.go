@@ -202,11 +202,53 @@ func UpdateTopicConfigHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: Implement the actual topic config update logic
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"message": "Topic configuration update not yet implemented",
-			"topic":   topicName,
-			"config":  request.Config,
+		// Validate that config is not empty
+		if len(request.Config) == 0 {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Status:  http.StatusBadRequest,
+				Message: "Configuration cannot be empty",
+			})
+			return
+		}
+
+		// Update the topic configuration
+		err := k.UpdateTopicConfig(c.Request.Context(), topicName, request.Config)
+		if err != nil {
+			// Check for specific error types
+			if strings.Contains(err.Error(), "not found") {
+				c.JSON(http.StatusNotFound, ErrorResponse{
+					Status:  http.StatusNotFound,
+					Message: "Topic not found",
+					Detail:  err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Status:  http.StatusInternalServerError,
+				Message: "Failed to update topic configuration",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		// Get updated topic details to return in the response
+		topic, err := k.GetTopicDetails(c.Request.Context(), topicName)
+		if err != nil {
+			// Still return success even if we can't retrieve the updated details
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Topic configuration updated successfully",
+				"topic": gin.H{
+					"name":   topicName,
+					"config": request.Config,
+				},
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Topic configuration updated successfully",
+			"topic":   topic,
 		})
 	}
 }

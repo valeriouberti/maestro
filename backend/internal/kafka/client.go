@@ -259,3 +259,56 @@ func (kc *KafkaClient) DeleteTopic(ctx context.Context, topicName string) error 
 
 	return nil
 }
+
+// UpdateTopicConfig updates the configuration of an existing Kafka topic
+func (kc *KafkaClient) UpdateTopicConfig(ctx context.Context, topicName string, config map[string]string) error {
+	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
+	defer cancel()
+
+	if topicName == "" {
+		return fmt.Errorf("topic name cannot be empty")
+	}
+	if len(config) == 0 {
+		return fmt.Errorf("no configuration provided")
+	}
+
+	metadata, err := kc.AdminClient.GetMetadata(&topicName, false, int(kc.Timeout.Milliseconds()))
+	if err != nil {
+		return fmt.Errorf("failed to check if topic exists: %w", err)
+	}
+
+	if _, exists := metadata.Topics[topicName]; !exists {
+		return fmt.Errorf("topic '%s' not found", topicName)
+	}
+
+	configEntries := make([]kafka.ConfigEntry, 0, len(config))
+	for key, value := range config {
+		configEntries = append(configEntries, kafka.ConfigEntry{
+			Name:  key,
+			Value: value,
+		})
+	}
+
+	configResource := kafka.ConfigResource{
+		Type:   kafka.ResourceTopic,
+		Name:   topicName,
+		Config: configEntries,
+	}
+
+	result, err := kc.AdminClient.AlterConfigs(
+		ctx,
+		[]kafka.ConfigResource{configResource},
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update topic configuration: %w", err)
+	}
+
+	if len(result) > 0 {
+		if result[0].Error.Code() != kafka.ErrNoError {
+			return fmt.Errorf("failed to update topic configuration: %s", result[0].Error.String())
+		}
+	}
+
+	return nil
+}

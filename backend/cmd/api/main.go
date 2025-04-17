@@ -10,15 +10,9 @@ import (
 func main() {
 	r := gin.Default()
 
-	r.GET("/api/v1/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status": "ok",
-		})
-	})
-
 	apiGroup := r.Group("/api/v1")
 	{
-		apiGroup.GET("/api/health", func(c *gin.Context) {
+		apiGroup.GET("health", func(c *gin.Context) {
 			c.JSON(200, gin.H{
 				"status": "ok",
 			})

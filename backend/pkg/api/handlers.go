@@ -95,7 +95,6 @@ func CreateTopicHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			return
 		}
 
-		// Convert the request to a domain.TopicInfo
 		topicInfo := domain.TopicInfo{
 			Name:              request.Name,
 			NumPartitions:     request.NumPartitions,
@@ -103,10 +102,8 @@ func CreateTopicHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			Config:            request.Config,
 		}
 
-		// Create the topic
 		err := k.CreateTopic(c.Request.Context(), topicInfo)
 		if err != nil {
-			// Check for specific error types
 			if strings.Contains(err.Error(), "already exists") {
 				c.JSON(http.StatusConflict, gin.H{
 					"error": "Topic already exists: " + err.Error(),
@@ -120,10 +117,8 @@ func CreateTopicHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			return
 		}
 
-		// Return success response with the created topic
 		topic, err := k.GetTopicDetails(c.Request.Context(), request.Name)
 		if err != nil {
-			// We still return success even if we can't fetch the details
 			c.JSON(http.StatusCreated, gin.H{
 				"message": "Topic created successfully",
 				"topic": gin.H{
@@ -154,10 +149,8 @@ func DeleteTopicHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			return
 		}
 
-		// Delete the topic
 		err := k.DeleteTopic(c.Request.Context(), topicName)
 		if err != nil {
-			// Check for common errors
 			if strings.Contains(err.Error(), "not found") {
 				c.JSON(http.StatusNotFound, ErrorResponse{
 					Status:  http.StatusNotFound,
@@ -175,7 +168,6 @@ func DeleteTopicHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			return
 		}
 
-		// Return success response
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Topic deleted successfully",
 			"topic":   topicName,

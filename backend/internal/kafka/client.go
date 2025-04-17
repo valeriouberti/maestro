@@ -25,13 +25,8 @@ func NewKafkaClient(brokers []string) (*KafkaClient, error) {
 	}
 
 	configMap := &kafka.ConfigMap{
-		"bootstrap.servers":     strings.Join(brokers, ","),
-		"client.id":             "maestro-client",
-		"broker.address.family": "v4", // Force IPv4 resolution,
-
-		"socket.keepalive.enable":  true,
-		"reconnect.backoff.ms":     1000,
-		"reconnect.backoff.max.ms": 10000,
+		"bootstrap.servers": strings.Join(brokers, ","),
+		"client.id":         "maestro-client",
 	}
 
 	adminClient, err := kafka.NewAdminClient(configMap)
@@ -140,7 +135,6 @@ func (kc *KafkaClient) GetTopicDetails(ctx context.Context, topicName string) (*
 		return nil, fmt.Errorf("topic '%s' not found", topicName)
 	}
 
-	// Get topic config
 	configResources := []kafka.ConfigResource{
 		{
 			Type: kafka.ResourceTopic,
@@ -162,7 +156,6 @@ func (kc *KafkaClient) GetTopicDetails(ctx context.Context, topicName string) (*
 		}
 	}
 
-	// Build partition information
 	partitions := make([]domain.PartitionInfo, 0, len(topicMetadata.Partitions))
 	for _, partition := range topicMetadata.Partitions {
 		partitions = append(partitions, domain.PartitionInfo{
@@ -173,7 +166,6 @@ func (kc *KafkaClient) GetTopicDetails(ctx context.Context, topicName string) (*
 		})
 	}
 
-	// Determine replication factor from first partition
 	replicationFactor := 0
 	if len(topicMetadata.Partitions) > 0 && len(topicMetadata.Partitions[0].Replicas) > 0 {
 		replicationFactor = len(topicMetadata.Partitions[0].Replicas)
@@ -193,7 +185,6 @@ func (kc *KafkaClient) CreateTopic(ctx context.Context, topic domain.TopicInfo) 
 	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
 	defer cancel()
 
-	// Validate input
 	if topic.Name == "" {
 		return fmt.Errorf("topic name cannot be empty")
 	}
@@ -204,7 +195,6 @@ func (kc *KafkaClient) CreateTopic(ctx context.Context, topic domain.TopicInfo) 
 		return fmt.Errorf("replication factor must be greater than 0")
 	}
 
-	// Create the topic specification
 	topicSpec := kafka.TopicSpecification{
 		Topic:             topic.Name,
 		NumPartitions:     int(topic.NumPartitions),
@@ -212,7 +202,6 @@ func (kc *KafkaClient) CreateTopic(ctx context.Context, topic domain.TopicInfo) 
 		Config:            topic.Config,
 	}
 
-	// Create the topic
 	topicResults, err := kc.AdminClient.CreateTopics(
 		ctx,
 		[]kafka.TopicSpecification{topicSpec},
@@ -223,7 +212,6 @@ func (kc *KafkaClient) CreateTopic(ctx context.Context, topic domain.TopicInfo) 
 		return fmt.Errorf("failed to create topic: %w", err)
 	}
 
-	// Check for per-topic errors
 	if len(topicResults) > 0 {
 		if topicResults[0].Error.Code() != kafka.ErrNoError {
 			return fmt.Errorf("failed to create topic '%s': %s",
@@ -239,12 +227,10 @@ func (kc *KafkaClient) DeleteTopic(ctx context.Context, topicName string) error 
 	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
 	defer cancel()
 
-	// Validate input
 	if topicName == "" {
 		return fmt.Errorf("topic name cannot be empty")
 	}
 
-	// Check if topic exists before attempting to delete it
 	metadata, err := kc.AdminClient.GetMetadata(&topicName, false, int(kc.Timeout.Milliseconds()))
 	if err != nil {
 		return fmt.Errorf("failed to check if topic exists: %w", err)
@@ -254,7 +240,6 @@ func (kc *KafkaClient) DeleteTopic(ctx context.Context, topicName string) error 
 		return fmt.Errorf("topic '%s' not found", topicName)
 	}
 
-	// Delete the topic
 	topicResults, err := kc.AdminClient.DeleteTopics(
 		ctx,
 		[]string{topicName},
@@ -265,7 +250,6 @@ func (kc *KafkaClient) DeleteTopic(ctx context.Context, topicName string) error 
 		return fmt.Errorf("failed to delete topic: %w", err)
 	}
 
-	// Check for per-topic errors
 	if len(topicResults) > 0 {
 		if topicResults[0].Error.Code() != kafka.ErrNoError {
 			return fmt.Errorf("failed to delete topic '%s': %s",

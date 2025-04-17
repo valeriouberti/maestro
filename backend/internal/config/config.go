@@ -36,14 +36,12 @@ func LoadConfig() (*Config, error) {
 		EnvironmentName: getEnvWithDefault("ENVIRONMENT", "development"),
 	}
 
-	// Required settings
 	kafkaBrokersStr := os.Getenv("KAFKA_BROKERS")
 	if kafkaBrokersStr == "" {
 		return nil, fmt.Errorf("KAFKA_BROKERS environment variable is required")
 	}
 	config.KafkaBrokers = strings.Split(kafkaBrokersStr, ",")
 
-	// Validate configuration
 	if err := config.validate(); err != nil {
 		return nil, err
 	}

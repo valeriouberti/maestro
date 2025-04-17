@@ -4,11 +4,34 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/valeriouberti/maestro/pkg/kafka"
 )
 
+type BrokerInfo struct {
+	ID   int32  `json:"id"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
 // GetClustersHandler returns cluster information.
-func GetClustersHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "Get Clusters - Not implemented yet"})
+func GetClustersHandler(k *kafka.KafkaClient) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		brokerMetadata, err := k.GetBrokers()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get broker metadata"})
+			return
+		}
+
+		brokers := make([]BrokerInfo, len(brokerMetadata))
+		for i, broker := range brokerMetadata {
+			brokers[i] = BrokerInfo{
+				ID:   broker.ID,
+				Host: broker.Host,
+				Port: broker.Port,
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"brokers": brokers})
+	}
 }
 
 // ListTopicsHandler returns a list of topics.

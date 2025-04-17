@@ -16,35 +16,28 @@ import (
 )
 
 func main() {
-	// Setup logger
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("Starting Maestro Kafka Management Service")
 
-	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Set Gin mode based on environment
 	if cfg.EnvironmentName == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Initialize router
 	r := gin.Default()
 
-	// Initialize Kafka client
 	kClient, err := kafka.NewKafkaClient(cfg.KafkaBrokers)
 	if err != nil {
 		log.Fatalf("Failed to create Kafka client: %v", err)
 	}
 	defer kClient.Close()
 
-	// Setup API routes
 	setupRoutes(r, kClient)
 
-	// Configure HTTP server
 	srv := &http.Server{
 		Addr:         ":" + cfg.ServerPort,
 		Handler:      r,
@@ -53,7 +46,6 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Start server in a goroutine
 	go func() {
 		log.Printf("Server listening on port %s", cfg.ServerPort)
 		if cfg.EnableTLS {
@@ -67,18 +59,15 @@ func main() {
 		}
 	}()
 
-	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Shutting down server...")
 
-	// Create shutdown context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Shutdown the server
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
@@ -88,16 +77,13 @@ func main() {
 
 // setupRoutes configures all API routes
 func setupRoutes(r *gin.Engine, kClient *kafka.KafkaClient) {
-	// Add basic middleware
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
 
-	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// API routes
 	apiGroup := r.Group("/api/v1")
 	{
 		apiGroup.GET("/clusters", api.GetClustersHandler(kClient))

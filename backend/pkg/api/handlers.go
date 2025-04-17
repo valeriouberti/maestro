@@ -154,9 +154,30 @@ func DeleteTopicHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: Implement the actual topic deletion logic
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"message": "Topic deletion not yet implemented",
+		// Delete the topic
+		err := k.DeleteTopic(c.Request.Context(), topicName)
+		if err != nil {
+			// Check for common errors
+			if strings.Contains(err.Error(), "not found") {
+				c.JSON(http.StatusNotFound, ErrorResponse{
+					Status:  http.StatusNotFound,
+					Message: "Topic not found",
+					Detail:  err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Status:  http.StatusInternalServerError,
+				Message: "Failed to delete topic",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		// Return success response
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Topic deleted successfully",
 			"topic":   topicName,
 		})
 	}

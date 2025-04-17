@@ -130,7 +130,7 @@ func (kc *KafkaClient) GetTopicDetails(ctx context.Context, topicName string) (*
 	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
 	defer cancel()
 
-	metadata, err := kc.AdminClient.GetMetadata(&topicName, true, int(kc.Timeout.Milliseconds()))
+	metadata, err := kc.AdminClient.GetMetadata(&topicName, false, int(kc.Timeout.Milliseconds()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get topic details: %w", err)
 	}
@@ -228,6 +228,48 @@ func (kc *KafkaClient) CreateTopic(ctx context.Context, topic domain.TopicInfo) 
 		if topicResults[0].Error.Code() != kafka.ErrNoError {
 			return fmt.Errorf("failed to create topic '%s': %s",
 				topic.Name, topicResults[0].Error.String())
+		}
+	}
+
+	return nil
+}
+
+// DeleteTopic deletes a Kafka topic
+func (kc *KafkaClient) DeleteTopic(ctx context.Context, topicName string) error {
+	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
+	defer cancel()
+
+	// Validate input
+	if topicName == "" {
+		return fmt.Errorf("topic name cannot be empty")
+	}
+
+	// Check if topic exists before attempting to delete it
+	metadata, err := kc.AdminClient.GetMetadata(&topicName, false, int(kc.Timeout.Milliseconds()))
+	if err != nil {
+		return fmt.Errorf("failed to check if topic exists: %w", err)
+	}
+
+	if _, exists := metadata.Topics[topicName]; !exists {
+		return fmt.Errorf("topic '%s' not found", topicName)
+	}
+
+	// Delete the topic
+	topicResults, err := kc.AdminClient.DeleteTopics(
+		ctx,
+		[]string{topicName},
+		kafka.SetAdminOperationTimeout(kc.Timeout),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to delete topic: %w", err)
+	}
+
+	// Check for per-topic errors
+	if len(topicResults) > 0 {
+		if topicResults[0].Error.Code() != kafka.ErrNoError {
+			return fmt.Errorf("failed to delete topic '%s': %s",
+				topicName, topicResults[0].Error.String())
 		}
 	}
 

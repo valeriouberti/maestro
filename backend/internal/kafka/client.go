@@ -312,3 +312,102 @@ func (kc *KafkaClient) UpdateTopicConfig(ctx context.Context, topicName string, 
 
 	return nil
 }
+
+// ListConsumerGroups retrieves a list of all consumer groups in the Kafka cluster
+func (kc *KafkaClient) ListConsumerGroups(ctx context.Context) ([]domain.ConsumerGroupInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
+	defer cancel()
+
+	groupList, err := kc.AdminClient.ListConsumerGroups(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list consumer groups: %w", err)
+	}
+
+	groups := make([]domain.ConsumerGroupInfo, 0)
+	for _, group := range groupList.Valid {
+		groups = append(groups, domain.ConsumerGroupInfo{
+			GroupID: group.GroupID,
+			State:   "", // Basic listing doesn't include state
+		})
+	}
+
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].GroupID < groups[j].GroupID
+	})
+
+	return groups, nil
+}
+
+// GetConsumerGroupDetails retrieves detailed information about a specific consumer group
+func (kc *KafkaClient) GetConsumerGroupDetails(ctx context.Context, groupID string) (*domain.ConsumerGroupDatails, error) {
+	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
+	defer cancel()
+
+	if groupID == "" {
+		return nil, fmt.Errorf("consumer group ID cannot be empty")
+	}
+
+	groups, err := kc.AdminClient.DescribeConsumerGroups(
+		ctx,
+		[]string{groupID},
+		// Using context timeout instead of operation-specific timeout
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe consumer group: %w", err)
+	}
+
+	if len(groups.ConsumerGroupDescriptions) == 0 {
+		return nil, fmt.Errorf("consumer group '%s' not found", groupID)
+	}
+
+	group := groups.ConsumerGroupDescriptions[0]
+	if group.Error.Code() != kafka.ErrNoError {
+		if group.Error.Code() == kafka.ErrGroupIDNotFound {
+			return nil, fmt.Errorf("consumer group '%s' not found", groupID)
+		}
+		return nil, fmt.Errorf("failed to get consumer group details: %s", group.Error.String())
+	}
+
+	members := make([]domain.ConsumerGroupMemberInfo, 0, len(group.Members))
+	subscribedTopics := make(map[string]bool)
+
+	for _, member := range group.Members {
+		assignments := make([]domain.TopicPartitionAssignment, 0, len(member.Assignment.TopicPartitions))
+
+		for _, assignment := range member.Assignment.TopicPartitions {
+			assignments = append(assignments, domain.TopicPartitionAssignment{
+				Topic:     *assignment.Topic,
+				Partition: assignment.Partition,
+			})
+		}
+
+		members = append(members, domain.ConsumerGroupMemberInfo{
+			ClientID:    member.ClientID,
+			ConsumerID:  member.ConsumerID,
+			Host:        member.Host,
+			Assignments: assignments,
+		})
+	}
+
+	topics := make([]string, 0, len(subscribedTopics))
+	for topic := range subscribedTopics {
+		topics = append(topics, topic)
+	}
+	sort.Strings(topics)
+
+	coordinator := domain.BrokerInfo{
+		ID:   int32(group.Coordinator.ID),
+		Host: group.Coordinator.Host,
+		Port: group.Coordinator.Port,
+	}
+
+	groupInfo := &domain.ConsumerGroupDatails{
+		GroupID:     groupID,
+		State:       string(group.State),
+		Coordinator: coordinator,
+		Members:     members,
+		Topics:      topics,
+	}
+
+	return groupInfo, nil
+}

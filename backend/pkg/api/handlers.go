@@ -256,9 +256,18 @@ func UpdateTopicConfigHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 // ListConsumerGroupsHandler returns a list of consumer groups
 func ListConsumerGroupsHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// TODO: Implement consumer group listing
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"message": "Consumer group listing not yet implemented",
+		groups, err := k.ListConsumerGroups(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Status:  http.StatusInternalServerError,
+				Message: "Failed to list consumer groups",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"groups": groups,
 		})
 	}
 }
@@ -275,10 +284,28 @@ func GetConsumerGroupHandler(k *kafka.KafkaClient) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: Implement consumer group details retrieval
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"message": "Consumer group details not yet implemented",
-			"groupId": groupID,
+		group, err := k.GetConsumerGroupDetails(c.Request.Context(), groupID)
+		if err != nil {
+			// Check for common errors
+			if strings.Contains(err.Error(), "not found") {
+				c.JSON(http.StatusNotFound, ErrorResponse{
+					Status:  http.StatusNotFound,
+					Message: "Consumer group not found",
+					Detail:  err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Status:  http.StatusInternalServerError,
+				Message: "Failed to get consumer group details",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"group": group,
 		})
 	}
 }

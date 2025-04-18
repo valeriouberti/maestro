@@ -23,3 +23,32 @@ type PartitionInfo struct {
 	Replicas []int32 `json:"replicas"`
 	ISR      []int32 `json:"isr"`
 }
+
+// ConsumerGroupInfo represents basic information about a consumer group.
+type ConsumerGroupInfo struct {
+	GroupID string `json:"groupId"`
+	State   string `json:"state,omitempty"` // Example: Stable, Empty, PreparingRebalance
+}
+
+// ConsumerGroupInfo represents information about a Kafka consumer group
+type ConsumerGroupDatails struct {
+	GroupID     string                    `json:"groupId"`
+	State       string                    `json:"state"`
+	Coordinator BrokerInfo                `json:"coordinator"`
+	Members     []ConsumerGroupMemberInfo `json:"members,omitempty"`
+	Topics      []string                  `json:"topics,omitempty"`
+}
+
+// ConsumerGroupMemberInfo represents a member of a consumer group
+type ConsumerGroupMemberInfo struct {
+	ClientID    string                     `json:"clientId"`
+	ConsumerID  string                     `json:"consumerId"`
+	Host        string                     `json:"host"`
+	Assignments []TopicPartitionAssignment `json:"assignments,omitempty"`
+}
+
+// TopicPartitionAssignment represents a topic-partition assignment to a consumer
+type TopicPartitionAssignment struct {
+	Topic     string `json:"topic"`
+	Partition int32  `json:"partition"`
+}

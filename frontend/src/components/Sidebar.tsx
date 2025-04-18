@@ -50,18 +50,6 @@ const Sidebar: React.FC = () => {
             Consumer Groups
           </Link>
         </li>
-        <li className="mb-2">
-          <Link 
-            to="/topics/create" 
-            className={`block py-2 px-4 rounded transition-colors ${
-              isActive('/topics/create') 
-                ? 'bg-sidebar-hover text-accent-blue font-medium' 
-                : 'hover:bg-sidebar-hover text-gray-700'
-            }`}
-          >
-            Create Topic
-          </Link>
-        </li>
       </ul>
     </div>
   );

@@ -2,7 +2,7 @@
 
 Maestro is a modern, lightweight management interface for Apache Kafka clusters. It provides a simple and intuitive way to monitor and manage Kafka topics, consumer groups, and brokers through a responsive web interface.
 
-<img alt="Maestro UI" src="https://via.placeholder.com/800x450?text=Maestro+UI">
+<img alt="Maestro UI" src="./frontend/src/logos/maestro.png" width="300" />
 
 ## Features
 

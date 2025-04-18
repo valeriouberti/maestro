@@ -339,7 +339,7 @@ func (kc *KafkaClient) ListConsumerGroups(ctx context.Context) ([]domain.Consume
 }
 
 // GetConsumerGroupDetails retrieves detailed information about a specific consumer group
-func (kc *KafkaClient) GetConsumerGroupDetails(ctx context.Context, groupID string) (*domain.ConsumerGroupDatails, error) {
+func (kc *KafkaClient) GetConsumerGroupDetails(ctx context.Context, groupID string) (*domain.ConsumerGroupDetails, error) {
 	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
 	defer cancel()
 
@@ -401,7 +401,7 @@ func (kc *KafkaClient) GetConsumerGroupDetails(ctx context.Context, groupID stri
 		Port: group.Coordinator.Port,
 	}
 
-	groupInfo := &domain.ConsumerGroupDatails{
+	groupInfo := &domain.ConsumerGroupDetails{
 		GroupID:     groupID,
 		State:       string(group.State),
 		Coordinator: coordinator,

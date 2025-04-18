@@ -31,7 +31,7 @@ type ConsumerGroupInfo struct {
 }
 
 // ConsumerGroupInfo represents information about a Kafka consumer group
-type ConsumerGroupDatails struct {
+type ConsumerGroupDetails struct {
 	GroupID     string                    `json:"groupId"`
 	State       string                    `json:"state"`
 	Coordinator BrokerInfo                `json:"coordinator"`

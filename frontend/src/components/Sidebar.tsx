@@ -1,6 +1,6 @@
-// src/components/Sidebar.tsx
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import maestroLogo from '../logos/maestro.png';
 
 const Sidebar: React.FC = () => {
   const location = useLocation();
@@ -12,7 +12,10 @@ const Sidebar: React.FC = () => {
 
   return (
     <div className="w-64 bg-sidebar-blue h-screen fixed top-0 left-0 p-4 shadow-sm">
-      <h2 className="text-2xl font-bold mb-6 text-accent-blue">Maestro</h2>
+      <div className="flex flex-col items-center mb-4">
+        <img src={maestroLogo} alt="Maestro Logo" className="w-20 h-20 mb-2" />
+        <h2 className="text-2xl font-bold text-accent-blue">Maestro</h2>
+      </div>
       <ul>
         <li className="mb-2">
           <Link 

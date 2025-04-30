@@ -11,6 +11,7 @@ Maestro is a modern, lightweight management interface for Apache Kafka clusters.
 - **Consumer Group Monitoring**: Track consumer groups, their members, and assignments
 - **Configuration Management**: Modify topic configurations with a user-friendly interface
 - **Message Explorer**: Browse and inspect messages within Kafka topics
+- **Message Publishing**: Easily publish new messages to Kafka topics with support for keys, values, and headers
 - **Responsive Design**: Modern UI that works on desktop and mobile devices
 
 ## Architecture
@@ -111,6 +112,15 @@ The backend exposes a RESTful API with the following endpoints:
     - `partition` - Partition to read from (default: 0)
     - `offset` - Starting offset (default: beginning, use "latest" for newest messages)
     - `limit` - Maximum number of messages to retrieve (default: 100)
+
+#### Message Publishing
+
+- `POST /api/v1/topics/:topicName/messages` - Publish a message to a topic
+  - Request body:
+    - `key` - Message key (optional)
+    - `value` - Message value (required)
+    - `headers` - Key-value pairs for message headers (optional)
+    - `partition` - Specific partition to publish to (optional, defaults to automatic partition selection)
 
 #### Consumer Group Operations
 

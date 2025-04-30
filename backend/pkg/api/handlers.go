@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/gin-gonic/gin"
@@ -41,6 +43,15 @@ type TopicCreationRequest struct {
 // The configuration map is required for the request to be valid.
 type TopicConfigUpdateRequest struct {
 	Config map[string]string `json:"config" binding:"required"`
+}
+
+// MessagePublishRequest represents a request to publish a message to a Kafka topic.
+// It contains the message key, value, and optional headers along with partition selection.
+type MessagePublishRequest struct {
+	Key       string            `json:"key"`
+	Value     string            `json:"value" binding:"required"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Partition int32             `json:"partition,omitempty"` // Use -1 for automatic partition selection
 }
 
 // GetClustersHandler returns a Gin HTTP handler that retrieves Kafka broker metadata.
@@ -448,8 +459,13 @@ func GetConsumerGroupHandler(k *kafka_client.KafkaClient) gin.HandlerFunc {
 // - 400 Bad Request if the topic name is missing or parameters are invalid
 // - 404 Not Found if the topic doesn't exist
 // - 500 Internal Server Error for other failures
+// GetTopicMessagesHandler returns a HTTP handler function that retrieves messages from a specific Kafka topic.
 func GetTopicMessagesHandler(k *kafka_client.KafkaClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Set a longer timeout for this specific request
+		ctx, cancel := context.WithTimeout(c.Request.Context(), k.Timeout*3) // Triple the timeout
+		defer cancel()
+
 		topicName := c.Param("topicName")
 		if topicName == "" {
 			c.JSON(http.StatusBadRequest, ErrorResponse{
@@ -479,6 +495,8 @@ func GetTopicMessagesHandler(k *kafka_client.KafkaClient) gin.HandlerFunc {
 			// Special case for "latest" offset
 			if offsetStr == "latest" {
 				offset = kafka.OffsetEnd
+			} else if offsetStr == "earliest" {
+				offset = kafka.OffsetBeginning
 			} else {
 				offsetInt, err := strconv.ParseInt(offsetStr, 10, 64)
 				if err != nil {
@@ -511,11 +529,30 @@ func GetTopicMessagesHandler(k *kafka_client.KafkaClient) gin.HandlerFunc {
 				})
 				return
 			}
+			// Cap the maximum limit to avoid excessive resource usage
+			if limitInt > 1000 {
+				limitInt = 1000
+			}
 			limit = limitInt
 		}
 
-		messages, err := k.GetTopicMessages(c.Request.Context(), topicName, partition, int64(offset), limit)
+		// Disable response buffering to prevent timeouts
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+		// Use our extended timeout context
+		messages, err := k.GetTopicMessages(ctx, topicName, partition, int64(offset), limit)
 		if err != nil {
+			if ctx.Err() == context.DeadlineExceeded ||
+				strings.Contains(err.Error(), "context deadline exceeded") ||
+				strings.Contains(err.Error(), "timed out") {
+				c.JSON(http.StatusGatewayTimeout, ErrorResponse{
+					Status:  http.StatusGatewayTimeout,
+					Message: "Request timed out while retrieving messages",
+					Detail:  "Try reducing the number of messages or use an explicit offset instead of 'latest'",
+				})
+				return
+			}
+
 			if strings.Contains(err.Error(), "not found") {
 				c.JSON(http.StatusNotFound, ErrorResponse{
 					Status:  http.StatusNotFound,
@@ -539,6 +576,95 @@ func GetTopicMessagesHandler(k *kafka_client.KafkaClient) gin.HandlerFunc {
 			"offset":    offset,
 			"count":     len(messages),
 			"messages":  messages,
+		})
+	}
+}
+
+// PublishMessageHandler creates a Gin HTTP handler for publishing a message to a Kafka topic.
+// It accepts a message with key, value, headers, and optional partition targeting.
+//
+// The handler validates:
+// - The topic name is provided
+// - The request contains the required fields
+// - The topic exists
+//
+// Returns:
+// - 200 OK with the delivery status on success
+// - 400 Bad Request if the topic name is missing or the request is invalid
+// - 404 Not Found if the topic or specified partition doesn't exist
+// - 500 Internal Server Error for other failures during message production
+func PublishMessageHandler(k *kafka_client.KafkaClient) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		topicName := c.Param("topicName")
+		if topicName == "" {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Status:  http.StatusBadRequest,
+				Message: "Topic name is required",
+			})
+			return
+		}
+
+		var request MessagePublishRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Status:  http.StatusBadRequest,
+				Message: "Invalid request format",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		// Use -1 as the default partition which will trigger automatic partition selection
+		partition := request.Partition
+		if partition == 0 && request.Partition != 0 {
+			partition = -1 // Auto-select partition if not explicitly set to 0
+		}
+
+		// Publish the message
+		err := k.PublishMessage(
+			c.Request.Context(),
+			topicName,
+			partition,
+			request.Key,
+			request.Value,
+			request.Headers,
+		)
+
+		if err != nil {
+			// Check for specific error types
+			if strings.Contains(err.Error(), "not found") {
+				c.JSON(http.StatusNotFound, ErrorResponse{
+					Status:  http.StatusNotFound,
+					Message: "Topic or partition not found",
+					Detail:  err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Status:  http.StatusInternalServerError,
+				Message: "Failed to publish message",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		// Include the message in the response
+		messageInfo := gin.H{
+			"key":       request.Key,
+			"value":     request.Value,
+			"topic":     topicName,
+			"partition": partition,
+			"timestamp": time.Now(),
+		}
+		if len(request.Headers) > 0 {
+			messageInfo["headers"] = request.Headers
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":          "Message published successfully",
+			"topic":            topicName,
+			"publishedMessage": messageInfo,
 		})
 	}
 }

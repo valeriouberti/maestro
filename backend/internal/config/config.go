@@ -26,9 +26,9 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	config := &Config{
 		ServerPort:      getEnvWithDefault("PORT", "8080"),
-		ReadTimeout:     getEnvDurationWithDefault("READ_TIMEOUT", 5*time.Second),
-		WriteTimeout:    getEnvDurationWithDefault("WRITE_TIMEOUT", 10*time.Second),
-		KafkaTimeout:    getEnvDurationWithDefault("KAFKA_TIMEOUT", 5*time.Second),
+		ReadTimeout:     getEnvDurationWithDefault("READ_TIMEOUT", 120*time.Second),  // Increase to 2 minutes
+		WriteTimeout:    getEnvDurationWithDefault("WRITE_TIMEOUT", 120*time.Second), // Increase to 2 minutes
+		KafkaTimeout:    getEnvDurationWithDefault("KAFKA_TIMEOUT", 60*time.Second),  // Increase to 1 minute
 		LogLevel:        getEnvWithDefault("LOG_LEVEL", "info"),
 		EnableTLS:       getEnvBoolWithDefault("ENABLE_TLS", false),
 		CertFile:        getEnvWithDefault("CERT_FILE", ""),

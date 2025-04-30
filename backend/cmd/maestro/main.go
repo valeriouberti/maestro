@@ -92,9 +92,10 @@ func setupRoutes(r *gin.Engine, kClient *kafka_client.KafkaClient) {
 		apiGroup.POST("/topics", api.CreateTopicHandler(kClient))
 		apiGroup.DELETE("/topics/:topicName", api.DeleteTopicHandler(kClient))
 		apiGroup.PUT("/topics/:topicName/config", api.UpdateTopicConfigHandler(kClient))
+		apiGroup.GET("/topics/:topicName/messages", api.GetTopicMessagesHandler(kClient))
+		apiGroup.POST("/topics/:topicName/messages", api.PublishMessageHandler(kClient))
 		apiGroup.GET("/consumergroups", api.ListConsumerGroupsHandler(kClient))
 		apiGroup.GET("/consumergroups/:groupId", api.GetConsumerGroupHandler(kClient))
-		apiGroup.GET("/topics/:topicName/messages", api.GetTopicMessagesHandler(kClient))
 	}
 }
 

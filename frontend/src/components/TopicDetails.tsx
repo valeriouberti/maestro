@@ -1,7 +1,7 @@
 // src/components/TopicDetails.tsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../apiConfig';
 import { TopicInfo } from '../types';
 
@@ -10,6 +10,10 @@ const TopicDetails: React.FC = () => {
   const [topic, setTopic] = useState<TopicInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchTopicDetails = async () => {
@@ -28,6 +32,34 @@ const TopicDetails: React.FC = () => {
 
     fetchTopicDetails();
   }, [topicName]);
+
+  const handleDeleteClick = () => {
+    setShowDeleteModal(true);
+    setDeleteError(null);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setDeleteError(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!topicName) return;
+    
+    setIsDeleting(true);
+    setDeleteError(null);
+    
+    try {
+      await axios.delete(`${API_BASE_URL}/topics/${topicName}`);
+      setShowDeleteModal(false);
+      // Redirect to topics list
+      navigate('/topics');
+    } catch (e: any) {
+      console.error("Error deleting topic:", e);
+      setDeleteError(e.response?.data?.message || e.message);
+      setIsDeleting(false);
+    }
+  };
 
   if (loading) {
     return <div className="p-4 text-gray-600">Loading topic details...</div>;
@@ -73,6 +105,20 @@ const TopicDetails: React.FC = () => {
             </svg>
             Explore Messages
           </Link>
+          <button 
+            onClick={handleDeleteClick}
+            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 flex items-center"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-5 w-5 mr-1" 
+              viewBox="0 0 20 20" 
+              fill="currentColor"
+            >
+              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            Delete Topic
+          </button>
           <Link 
             to="/topics" 
             className="px-4 py-2 text-sm text-accent-blue hover:text-blue-700"
@@ -173,6 +219,54 @@ const TopicDetails: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Delete Topic</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Are you sure you want to delete the topic <span className="font-semibold">{topicName}</span>? 
+              This action cannot be undone and will permanently delete all data in this topic.
+            </p>
+            
+            {deleteError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
+                {deleteError}
+              </div>
+            )}
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={handleCancelDelete}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 flex items-center"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Topic"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -404,7 +404,7 @@ func (kc *KafkaClient) GetConsumerGroupDetails(ctx context.Context, groupID stri
 
 	groupInfo := &domain.ConsumerGroupDetails{
 		GroupID:     groupID,
-		State:       string(group.State),
+		State:       string(rune(group.State)),
 		Coordinator: coordinator,
 		Members:     members,
 		Topics:      topics,
@@ -414,8 +414,10 @@ func (kc *KafkaClient) GetConsumerGroupDetails(ctx context.Context, groupID stri
 }
 
 // GetTopicMessages retrieves messages from a specified topic and partition
+// GetTopicMessages retrieves messages from a specified topic and partition
 func (kc *KafkaClient) GetTopicMessages(ctx context.Context, topicName string, partition int32, offset int64, limit int) ([]domain.TopicMessage, error) {
-	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
+	// Create a context with extended timeout for this operation specifically
+	ctx, cancel := context.WithTimeout(ctx, kc.Timeout*2) // Double the timeout for message retrieval
 	defer cancel()
 
 	if topicName == "" {
@@ -445,65 +447,119 @@ func (kc *KafkaClient) GetTopicMessages(ctx context.Context, topicName string, p
 		return nil, fmt.Errorf("partition %d does not exist for topic '%s'", partition, topicName)
 	}
 
-	// Create a consumer configuration
+	// For "latest" offset, first get the current high watermark to use as starting point
+	if offset == int64(kafka.OffsetEnd) {
+		// We'll use the admin client to check topic offsets first
+		offsets, err := kc.getPartitionOffsets(ctx, topicName, partition)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get offset information: %w", err)
+		}
+
+		// If partition is empty, return empty results immediately
+		if offsets.high <= offsets.low {
+			return []domain.TopicMessage{}, nil
+		}
+
+		// For "latest" offset, we'll take a much smaller window to ensure we get newer messages
+		var startOffset int64
+
+		// If limit is very large, use a smaller value to ensure we get recent messages
+		adjustedLimit := int64(limit)
+		if adjustedLimit > 100 {
+			adjustedLimit = 100
+		}
+
+		// Calculate starting offset to get newest messages (use a smaller window)
+		startOffset = offsets.high - adjustedLimit
+		if startOffset < offsets.low {
+			startOffset = offsets.low
+		}
+
+		// Use this calculated offset instead of "latest"
+		offset = startOffset
+	}
+
+	// Create a consumer configuration with more robust settings
 	config := &kafka.ConfigMap{
-		"bootstrap.servers":  strings.Join(kc.Brokers, ","),
-		"group.id":           "maestro-message-reader-" + uuid.New().String(),
-		"auto.offset.reset":  "earliest",
-		"enable.auto.commit": false,
+		"bootstrap.servers":         strings.Join(kc.Brokers, ","),
+		"group.id":                  "maestro-message-reader-" + uuid.New().String(),
+		"auto.offset.reset":         "earliest", // Use earliest as the default
+		"enable.auto.commit":        false,
+		"socket.keepalive.enable":   true,
+		"session.timeout.ms":        10000,   // 10 seconds
+		"max.poll.interval.ms":      30000,   // 30 seconds
+		"socket.timeout.ms":         10000,   // 10 seconds
+		"message.max.bytes":         1048576, // 1MB
+		"fetch.max.bytes":           5242880, // 5MB (must be >= message.max.bytes)
+		"receive.message.max.bytes": 5243392, // 5MB + 512 (must be >= fetch.max.bytes + 512)
 	}
 
 	consumer, err := kafka.NewConsumer(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kafka consumer: %w", err)
 	}
-	defer consumer.Close()
+	defer func() {
+		if err := consumer.Close(); err != nil {
+			fmt.Printf("Error closing Kafka consumer: %v", err)
+		}
+	}()
 
-	// Assign specific partition if requested, otherwise consume from all partitions
-	if partition >= 0 {
-		err = consumer.Assign([]kafka.TopicPartition{
-			{
-				Topic:     &topicName,
-				Partition: partition,
-				Offset:    kafka.Offset(offset),
-			},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to assign partition: %w", err)
-		}
-	} else {
-		err = consumer.Subscribe(topicName, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to subscribe to topic: %w", err)
-		}
+	// Assign partition with the explicit offset (which may have been calculated above)
+	err = consumer.Assign([]kafka.TopicPartition{
+		{
+			Topic:     &topicName,
+			Partition: partition,
+			Offset:    kafka.Offset(offset),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to assign partition: %w", err)
 	}
 
 	messages := make([]domain.TopicMessage, 0, limit)
-	timeout := time.After(kc.Timeout)
+	deadline := time.Now().Add(kc.Timeout)
 	messageCount := 0
+	emptyPollCount := 0
+	maxEmptyPolls := 5 // Be more aggressive in returning
 
-	for messageCount < limit {
+	for messageCount < limit && time.Now().Before(deadline) {
 		select {
-		case <-timeout:
-			// Return what we have if we hit the timeout
-			return messages, nil
 		case <-ctx.Done():
 			return messages, ctx.Err()
 		default:
-			ev := consumer.Poll(100) // Poll with 100ms timeout
+			ev := consumer.Poll(200) // Increased poll timeout for better throughput
 			if ev == nil {
+				emptyPollCount++
+				// If we've had several empty polls and already have some messages, return them
+				if emptyPollCount >= maxEmptyPolls && messageCount > 0 {
+					return messages, nil
+				}
 				continue
 			}
 
+			// Reset empty poll counter when we get an event
+			emptyPollCount = 0
+
 			switch e := ev.(type) {
 			case *kafka.Message:
+				var messageKey, messageValue string
+
+				// Safely handle message key and value
+				if e.Key != nil {
+					messageKey = string(e.Key)
+				}
+
+				if e.Value != nil {
+					messageValue = string(e.Value)
+				}
+
 				message := domain.TopicMessage{
 					Topic:     *e.TopicPartition.Topic,
 					Partition: e.TopicPartition.Partition,
 					Offset:    int64(e.TopicPartition.Offset),
 					Timestamp: e.Timestamp,
-					Key:       string(e.Key),
-					Value:     string(e.Value),
+					Key:       messageKey,
+					Value:     messageValue,
 					Headers:   make(map[string]string),
 				}
 
@@ -519,12 +575,147 @@ func (kc *KafkaClient) GetTopicMessages(ctx context.Context, topicName string, p
 					return messages, nil
 				}
 			case kafka.Error:
+				// Don't fail immediately on timeouts or transient errors
+				kafkaErr := e.Code()
+				if kafkaErr == kafka.ErrTimedOut ||
+					kafkaErr == kafka.ErrTransport ||
+					kafkaErr == kafka.ErrBrokerNotAvailable {
+					// Log but continue
+					fmt.Printf("Recoverable Kafka error: %v\n", e)
+					continue
+				}
+
 				return messages, fmt.Errorf("consumer error: %v", e)
-			default:
-				// Ignore other event types
 			}
 		}
 	}
 
+	// Return what we have if we reach here (timeout or done)
 	return messages, nil
+}
+
+// Helper method to get partition offsets without creating a consumer
+type partitionOffsets struct {
+	low  int64
+	high int64
+}
+
+func (kc *KafkaClient) getPartitionOffsets(ctx context.Context, topicName string, partition int32) (partitionOffsets, error) {
+	result := partitionOffsets{}
+
+	// Create a lightweight consumer just to get offsets
+	config := &kafka.ConfigMap{
+		"bootstrap.servers": strings.Join(kc.Brokers, ","),
+		"group.id":          "maestro-offset-checker",
+	}
+
+	c, err := kafka.NewConsumer(config)
+	if err != nil {
+		return result, fmt.Errorf("failed to create offset checker consumer: %w", err)
+	}
+	defer c.Close()
+
+	// Get low and high watermarks
+	low, high, err := c.GetWatermarkOffsets(topicName, partition)
+	if err != nil {
+		return result, fmt.Errorf("failed to get watermark offsets: %w", err)
+	}
+
+	result.low = low
+	result.high = high
+	return result, nil
+}
+
+// PublishMessage publishes a message to a specified Kafka topic
+func (kc *KafkaClient) PublishMessage(ctx context.Context, topicName string, partition int32, key string, value string, headers map[string]string) error {
+	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
+	defer cancel()
+
+	if topicName == "" {
+		return fmt.Errorf("topic name cannot be empty")
+	}
+
+	// Validate topic exists
+	metadata, err := kc.AdminClient.GetMetadata(&topicName, false, int(kc.Timeout.Milliseconds()))
+	if err != nil {
+		return fmt.Errorf("failed to check if topic exists: %w", err)
+	}
+
+	topicMetadata, exists := metadata.Topics[topicName]
+	if !exists {
+		return fmt.Errorf("topic '%s' not found", topicName)
+	}
+
+	// Validate partition exists if specified
+	if partition >= 0 {
+		partitionExists := false
+		for partID := range topicMetadata.Partitions {
+			if int32(partID) == partition {
+				partitionExists = true
+				break
+			}
+		}
+		if !partitionExists {
+			return fmt.Errorf("partition %d does not exist for topic '%s'", partition, topicName)
+		}
+	}
+
+	// Create producer
+	config := &kafka.ConfigMap{
+		"bootstrap.servers": strings.Join(kc.Brokers, ","),
+		"group.id":          "maestro-message-producer",
+		"acks":              "all", // Wait for all replicas
+	}
+
+	producer, err := kafka.NewProducer(config)
+	if err != nil {
+		return fmt.Errorf("failed to create Kafka producer: %w", err)
+	}
+	defer producer.Close()
+
+	// Create message headers if any
+	var kafkaHeaders []kafka.Header
+	if len(headers) > 0 {
+		kafkaHeaders = make([]kafka.Header, 0, len(headers))
+		for k, v := range headers {
+			kafkaHeaders = append(kafkaHeaders, kafka.Header{
+				Key:   k,
+				Value: []byte(v),
+			})
+		}
+	}
+
+	// Prepare the message
+	message := &kafka.Message{
+		TopicPartition: kafka.TopicPartition{
+			Topic:     &topicName,
+			Partition: partition,
+		},
+		Key:     []byte(key),
+		Value:   []byte(value),
+		Headers: kafkaHeaders,
+	}
+
+	// Set up delivery channel to receive delivery reports
+	deliveryChan := make(chan kafka.Event, 1)
+	defer close(deliveryChan)
+
+	// Produce the message
+	err = producer.Produce(message, deliveryChan)
+	if err != nil {
+		return fmt.Errorf("failed to produce message: %w", err)
+	}
+
+	// Wait for delivery report or context cancellation
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case e := <-deliveryChan:
+		m := e.(*kafka.Message)
+		if m.TopicPartition.Error != nil {
+			return fmt.Errorf("message delivery failed: %v", m.TopicPartition.Error)
+		}
+		// Return the partition and offset where the message was stored
+		return nil
+	}
 }

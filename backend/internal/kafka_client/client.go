@@ -1,4 +1,4 @@
-package kafka
+package kafka_client
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/google/uuid"
 	"github.com/valeriouberti/maestro/pkg/domain"
 )
 
@@ -410,4 +411,120 @@ func (kc *KafkaClient) GetConsumerGroupDetails(ctx context.Context, groupID stri
 	}
 
 	return groupInfo, nil
+}
+
+// GetTopicMessages retrieves messages from a specified topic and partition
+func (kc *KafkaClient) GetTopicMessages(ctx context.Context, topicName string, partition int32, offset int64, limit int) ([]domain.TopicMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, kc.Timeout)
+	defer cancel()
+
+	if topicName == "" {
+		return nil, fmt.Errorf("topic name cannot be empty")
+	}
+
+	// Validate topic exists
+	metadata, err := kc.AdminClient.GetMetadata(&topicName, false, int(kc.Timeout.Milliseconds()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if topic exists: %w", err)
+	}
+
+	topicMetadata, exists := metadata.Topics[topicName]
+	if !exists {
+		return nil, fmt.Errorf("topic '%s' not found", topicName)
+	}
+
+	// Validate partition exists
+	partitionExists := false
+	for partID := range topicMetadata.Partitions {
+		if int32(partID) == partition {
+			partitionExists = true
+			break
+		}
+	}
+	if !partitionExists && partition != -1 {
+		return nil, fmt.Errorf("partition %d does not exist for topic '%s'", partition, topicName)
+	}
+
+	// Create a consumer configuration
+	config := &kafka.ConfigMap{
+		"bootstrap.servers":  strings.Join(kc.Brokers, ","),
+		"group.id":           "maestro-message-reader-" + uuid.New().String(),
+		"auto.offset.reset":  "earliest",
+		"enable.auto.commit": false,
+	}
+
+	consumer, err := kafka.NewConsumer(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kafka consumer: %w", err)
+	}
+	defer consumer.Close()
+
+	// Assign specific partition if requested, otherwise consume from all partitions
+	if partition >= 0 {
+		err = consumer.Assign([]kafka.TopicPartition{
+			{
+				Topic:     &topicName,
+				Partition: partition,
+				Offset:    kafka.Offset(offset),
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to assign partition: %w", err)
+		}
+	} else {
+		err = consumer.Subscribe(topicName, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to subscribe to topic: %w", err)
+		}
+	}
+
+	messages := make([]domain.TopicMessage, 0, limit)
+	timeout := time.After(kc.Timeout)
+	messageCount := 0
+
+	for messageCount < limit {
+		select {
+		case <-timeout:
+			// Return what we have if we hit the timeout
+			return messages, nil
+		case <-ctx.Done():
+			return messages, ctx.Err()
+		default:
+			ev := consumer.Poll(100) // Poll with 100ms timeout
+			if ev == nil {
+				continue
+			}
+
+			switch e := ev.(type) {
+			case *kafka.Message:
+				message := domain.TopicMessage{
+					Topic:     *e.TopicPartition.Topic,
+					Partition: e.TopicPartition.Partition,
+					Offset:    int64(e.TopicPartition.Offset),
+					Timestamp: e.Timestamp,
+					Key:       string(e.Key),
+					Value:     string(e.Value),
+					Headers:   make(map[string]string),
+				}
+
+				// Extract headers if any
+				for _, header := range e.Headers {
+					message.Headers[header.Key] = string(header.Value)
+				}
+
+				messages = append(messages, message)
+				messageCount++
+
+				if messageCount >= limit {
+					return messages, nil
+				}
+			case kafka.Error:
+				return messages, fmt.Errorf("consumer error: %v", e)
+			default:
+				// Ignore other event types
+			}
+		}
+	}
+
+	return messages, nil
 }

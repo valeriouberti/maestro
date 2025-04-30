@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // BrokerInfo represents the information about a Kafka broker to be returned in the API response.
 type BrokerInfo struct {
 	ID   int32  `json:"id"`
@@ -51,4 +53,15 @@ type ConsumerGroupMemberInfo struct {
 type TopicPartitionAssignment struct {
 	Topic     string `json:"topic"`
 	Partition int32  `json:"partition"`
+}
+
+// TopicMessage represents a single message from a Kafka topic
+type TopicMessage struct {
+	Topic     string            `json:"topic"`
+	Partition int32             `json:"partition"`
+	Offset    int64             `json:"offset"`
+	Timestamp time.Time         `json:"timestamp"`
+	Key       string            `json:"key"`
+	Value     string            `json:"value"`
+	Headers   map[string]string `json:"headers,omitempty"`
 }

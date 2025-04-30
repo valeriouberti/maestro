@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/valeriouberti/maestro/internal/config"
-	"github.com/valeriouberti/maestro/internal/kafka"
+	"github.com/valeriouberti/maestro/internal/kafka_client"
 	"github.com/valeriouberti/maestro/pkg/api"
 )
 
@@ -30,7 +30,7 @@ func main() {
 
 	r := gin.Default()
 
-	kClient, err := kafka.NewKafkaClient(cfg.KafkaBrokers)
+	kClient, err := kafka_client.NewKafkaClient(cfg.KafkaBrokers)
 	if err != nil {
 		log.Fatalf("Failed to create Kafka client: %v", err)
 	}
@@ -76,7 +76,7 @@ func main() {
 }
 
 // setupRoutes configures all API routes
-func setupRoutes(r *gin.Engine, kClient *kafka.KafkaClient) {
+func setupRoutes(r *gin.Engine, kClient *kafka_client.KafkaClient) {
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
 

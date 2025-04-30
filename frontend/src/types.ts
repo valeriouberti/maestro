@@ -43,3 +43,13 @@ export interface TopicPartitionAssignment {
   topic: string;
   partition: number;
 }
+
+export interface TopicMessage {
+  topic: string;
+  partition: number;
+  offset: number;
+  timestamp: string;
+  key: string;
+  value: string;
+  headers?: { [key: string]: string };
+}

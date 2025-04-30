@@ -94,6 +94,7 @@ func setupRoutes(r *gin.Engine, kClient *kafka_client.KafkaClient) {
 		apiGroup.PUT("/topics/:topicName/config", api.UpdateTopicConfigHandler(kClient))
 		apiGroup.GET("/consumergroups", api.ListConsumerGroupsHandler(kClient))
 		apiGroup.GET("/consumergroups/:groupId", api.GetConsumerGroupHandler(kClient))
+		apiGroup.GET("/topics/:topicName/messages", api.GetTopicMessagesHandler(kClient))
 	}
 }
 

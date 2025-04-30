@@ -10,6 +10,7 @@ Maestro is a modern, lightweight management interface for Apache Kafka clusters.
 - **Topic Management**: Create, configure, delete, and browse Kafka topics
 - **Consumer Group Monitoring**: Track consumer groups, their members, and assignments
 - **Configuration Management**: Modify topic configurations with a user-friendly interface
+- **Message Explorer**: Browse and inspect messages within Kafka topics
 - **Responsive Design**: Modern UI that works on desktop and mobile devices
 
 ## Architecture
@@ -101,6 +102,15 @@ The backend exposes a RESTful API with the following endpoints:
 - `POST /api/v1/topics` - Create a new topic
 - `DELETE /api/v1/topics/:topicName` - Delete a topic
 - `PUT /api/v1/topics/:topicName/config` - Update topic configuration
+- `GET /api/v1/topics/:topicName/messages` - Retrieve messages from a topic
+
+#### Message Exploration
+
+- `GET /api/v1/topics/:topicName/messages` - Retrieve messages from a topic
+  - Query parameters:
+    - `partition` - Partition to read from (default: 0)
+    - `offset` - Starting offset (default: beginning, use "latest" for newest messages)
+    - `limit` - Maximum number of messages to retrieve (default: 100)
 
 #### Consumer Group Operations
 
@@ -186,7 +196,6 @@ frontend/
 #### Backend
 
 - <input disabled="" type="checkbox"> Add authentication and authorization
-- <input disabled="" type="checkbox"> Implement message browsing functionality
 - <input disabled="" type="checkbox"> Add schema registry integration
 - <input disabled="" type="checkbox"> Support for Kafka Connect management
 - <input disabled="" type="checkbox"> Enhanced broker management capabilities

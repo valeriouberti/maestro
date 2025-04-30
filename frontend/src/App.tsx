@@ -7,6 +7,7 @@ import ConsumerGroupDetails from './components/ConsumerGroupDetails';
 import TopicForm from './components/TopicForm';
 import Sidebar from './components/Sidebar';
 import './index.css';
+import TopicMessageExplorer from './components/TopicMessageExplorer';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
               <Route path="/clusters" element={<ClusterList />} />
               <Route path="/topics" element={<TopicList />} />
               <Route path="/topics/:topicName" element={<TopicDetails />} />
+              <Route path="/topics/:topicName/messages" element={<TopicMessageExplorer />} />
               <Route path="/consumer-groups" element={<ConsumerGroupList />} />
               <Route path="/consumer-groups/:groupId" element={<ConsumerGroupDetails />} />
               <Route path="/topics/create" element={<TopicForm />} />

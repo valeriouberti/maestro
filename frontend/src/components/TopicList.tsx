@@ -292,7 +292,7 @@ const TopicList: React.FC = () => {
           <p className="text-gray-600 mb-4">No topics found.</p>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-500 hover:bg-blue-600"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 cursor-pointer"
           >
             Create Your First Topic
           </button>

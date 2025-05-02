@@ -141,9 +141,9 @@ const TopicList: React.FC = () => {
         <h2 className="text-2xl font-semibold text-gray-800">Topics</h2>
         <div className="flex space-x-2">
           <button
-            onClick={refreshTopics}
-            className="px-4 py-2 text-accent-blue bg-white border border-accent-blue rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center"
-          >
+            onClick={refreshTopics} 
+            className="px-4 py-2 text-accent-blue bg-white border-1 border-accent-blue rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offest-2 flex items-center cursor-pointer"
+            >
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
               className="h-5 w-5 mr-1" 
@@ -160,7 +160,7 @@ const TopicList: React.FC = () => {
           </button>
           <button
             onClick={toggleCreateForm}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 flex items-center cursor-pointer"
           >
             {showCreateForm ? (
               <span>Cancel</span>
